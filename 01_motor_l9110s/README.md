@@ -47,7 +47,7 @@ ESP32가 L9110S에 신호를 줘서 모터를 **정방향 → 정지 → 역방�
 ```python
 from machine import Pin, PWM
 import time
-(2) PWM 출력 핀 설정
+### (2) PWM 출력 핀 설정
 GPIO25 → A-IA, GPIO26 → A-IB
 
 freq=20000 (20kHz) : 모터에서 나는 ‘삐—’ 소리를 줄이기 좋은 주파수
