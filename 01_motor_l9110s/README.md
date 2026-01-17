@@ -46,7 +46,7 @@ PWM으로 **속도(세기)**를 조절할 수 있다.
 
 ---
 
-# 1) 코드 파일 목록
+## 코드 파일 목록
 - **실습 1:** `lab1_forward_reverse_stop.py`
 - **실습 2:** `lab2_pwm_3step_speed.py`
 - **실습 2-1:** `lab2_1_pwm_min_start_test.py`
@@ -54,132 +54,63 @@ PWM으로 **속도(세기)**를 조절할 수 있다.
 
 ---
 
-# 실습 1) 정·역·정지 (기본 방향 제어)
+## 실습 1) 정·역·정지 (기본 방향 제어)
 
-## 1) 코드 전체 흐름(큰 그림)
+### 큰 흐름(요약)
 - PWM 핀 준비: IA/IB를 PWM으로 설정
-- 함수 3개 만들기: `stop()`, `forward(speed)`, `reverse(speed)`
+- 함수 3개: `stop()`, `forward(speed)`, `reverse(speed)`
 - 반복 실행: 정방향 → 정지 → 역방향 → 정지
 
-## 2) 주요 코드 분석
-### (1) 모듈(도구) 불러오기
-- `Pin` : ESP32 핀 제어
-- `PWM` : PWM 신호 생성(속도 조절)
-- `time.sleep()` : 시간 지연
+### 핵심 포인트
+- `freq=20000(20kHz)` : 모터 ‘삐—’ 소리(가청음) 줄이기에 유리
+- `duty(0~1023)` : 값이 커질수록 PWM 세기(속도) 증가
 
-```python
-from machine import Pin, PWM
-import time
+### 실행
+- 파일 실행: `lab1_forward_reverse_stop.py`
 
-(2) PWM 출력 핀 설정
-GPIO25 → A-IA, GPIO26 → A-IB
+---
 
-freq=20000(20kHz) : 모터 ‘삐—’ 소리를 줄이기 좋음
+## 실습 2) PWM 속도 3단 (LOW/MID/HIGH)
 
-IA = PWM(Pin(25), freq=20000)  # A-IA
-IB = PWM(Pin(26), freq=20000)  # A-IB
-(3) 핵심 함수 3개
-stop() : IA=0, IB=0 → 코스트 정지(힘 풀고 멈춤)
+### 큰 흐름(요약)
+- 정방향만 유지하며 `duty`를 3단계로 변경
+- LOW → MID → HIGH → STOP 반복
 
-forward(speed) : IB=0, IA=PWM → 정방향
+### 핵심 포인트
+- `duty`가 작으면 모터가 **안 움직일 수 있음**(기동 임계값)
 
-reverse(speed) : IA=0, IB=PWM → 역방향
+### 실행
+- 파일 실행: `lab2_pwm_3step_speed.py`
 
-def stop():
-    IA.duty(0); IB.duty(0)
+---
 
-def forward(speed):      # 0~1023
-    IB.duty(0)
-    IA.duty(speed)
+## 실습 2-1) 최소 기동 PWM 찾기 (모터가 도는 최소값)
 
-def reverse(speed):
-    IA.duty(0)
-    IB.duty(speed)
-(4) 반복 실행(루프)
-정방향 3초 → 정지 1초 → 역방향 3초 → 정지 1초 반복
+### 큰 흐름(요약)
+- PWM 값을 조금씩 올리면서
+- “언제부터 모터가 실제로 도는지” 최소값을 찾기
 
-while True:
-    forward(900); time.sleep(3)
-    stop(); time.sleep(1)
-    reverse(900); time.sleep(3)
-    stop(); time.sleep(1)
-실습 2) PWM 속도 3단 (LOW/MID/HIGH)
-1) 코드 전체 흐름(큰 그림)
-forward(speed) 함수로 정방향 유지
+### 실행
+- 파일 실행: `lab2_1_pwm_min_start_test.py`
 
-PWM duty를 3단계로 바꿔서 속도 차이를 확인
+---
 
-LOW→MID→HIGH→STOP 반복
+## 실습 3) PWM 가속·감속 램프 (부드럽게 속도 변화)
 
-2) 주요 코드 분석
-(1) 핵심 포인트
-duty(값)이 작으면 모터가 안 움직일 수도 있음
-(기동 임계값 때문에 LOW가 “정지처럼” 보일 수 있음)
+### 큰 흐름(요약)
+- 0 → 1023 서서히 증가(가속)
+- 잠깐 유지
+- 1023 → 0 서서히 감소(감속)
 
-(2) 속도 3단 구조
-print("[실습2] PWM 속도 3단")
-while True:
-    print("LOW")
-    forward(700); time.sleep(3)
+### 실행
+- 파일 실행: `lab3_pwm_ramp_up_down.py`
 
-    print("MID")
-    forward(850); time.sleep(3)
+---
 
-    print("HIGH")
-    forward(1023); time.sleep(3)
+## 자주 발생하는 질문(짧게)
 
-    print("STOP")
-    stop(); time.sleep(3)
-실습 2-1) 최소 기동 PWM 찾기 (모터가 도는 최소값)
-1) 코드 전체 흐름(큰 그림)
-PWM 값을 조금씩 올리면서
+### Q1. LOW에서 모터가 왜 안 돌아요?
+모터는 **처음 움직이려면 더 큰 힘(기동전류/임계 PWM)**이 필요해서, 낮은 duty는 정지처럼 보일 수 있어요.
 
-“언제부터 모터가 실제로 도는지” 최소값을 찾기
-
-그 값보다 낮으면 LOW에서 안 도는 이유를 설명 가능
-
-2) 주요 코드 분석
-(1) 테스트 방법(학생용)
-숫자를 올리다가 “처음 움직이는 순간” 값 기록
-
-print("[실습2-1] 최소 기동 PWM 찾기")
-for s in range(0, 1024, 50):
-    print("speed =", s)
-    forward(s)
-    time.sleep(1)
-stop()
-실습 3) PWM 가속·감속 램프 (부드럽게 속도 변화)
-1) 코드 전체 흐름(큰 그림)
-PWM 값을 0→1023으로 서서히 증가(가속)
-
-잠깐 유지
-
-1023→0으로 서서히 감소(감속)
-
-모터가 “부드럽게” 변하는 걸 확인
-
-2) 주요 코드 분석
-(1) 램프 업/다운 구조
-print("[실습3] 가속·감속 램프")
-while True:
-    print("RAMP UP")
-    for s in range(0, 1024, 40):
-        forward(s)
-        time.sleep(0.05)
-
-    print("HOLD")
-    forward(1023); time.sleep(2)
-
-    print("RAMP DOWN")
-    for s in range(1023, -1, -40):
-        forward(s)
-        time.sleep(0.05)
-
-    print("STOP")
-    stop(); time.sleep(2)
-자주 발생하는 질문(짧게)
-Q. LOW에서 모터가 왜 안 돌아요?
-→ 모터는 **처음 움직이려면 더 큰 힘(기동전류/임계 PWM)**이 필요해서, 낮은 duty는 정지처럼 보일 수 있어요.
-
-Q. 역방향이 더 느린 느낌이 나요.
-→ 모터/기어/마찰 편차 + 배터리 상태 + 드라이버 출력 차이로 방향별 속도가 달라질 수 있어요.
+### Q2. 역방향이 더 느린 느낌이 나요.
+모터/기어/마찰 편차 + 배터리 상태 + 드라이버 출력 차이로 방향별 속도가 달라질 수 있어요.
