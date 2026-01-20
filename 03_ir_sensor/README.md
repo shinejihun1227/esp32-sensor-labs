@@ -1,266 +1,289 @@
-# IR 센서 - (ESP32 + MicroPython/Thonny)
+# IR 센서(근접/반사형) - SIG/VCC/GND (ESP32 GPIO26)
 
-ESP32 + 3핀 IR 반사형 센서 모듈(**SIG / VCC / GND**)을 이용해 **바닥 반사량**을 읽고, 임계값(threshold)으로 **검정 라인(테이프) 감지**까지 진행합니다.
+> 이 문서는 **지금 너가 실제로 측정한 값 패턴(가까우면 ~3600, 멀어지면 0 근처 / 검은선에서도 높은 값이 나올 수 있음)**을 기준으로 작성된 **완성형 GitHub README** 입니다.
+>
+> ✅ 결론: 현재 사용 중인 센서는 “흰/검 라인 구분”보다는 **물체가 가까운지(반사광이 충분한지)**를 더 잘 보여주는 **근접/반사형 IR 센서처럼 동작**합니다.
 
 ---
 
-## 실습 목표
-- **SIG 값을 읽어서** 흰 바닥/검정 라인을 구분하고, 코드로 **라인 감지 로직**을 만든다.
+## 0) 한 줄 목표
+IR 센서의 출력(SIG)을 **ESP32 GPIO26**에서 읽어서,
+- (1) 센서 값이 어떻게 변하는지 확인하고
+- (2) 임계값으로 **감지/미감지(ON/OFF)** 를 만들고
+- (3) 오작동을 줄이는 **필터링(히스테리시스/평균)** 을 적용한다.
 
 ---
 
 ## 1) 준비물
 - ESP32(DevKit)
-- IR 반사형 센서 모듈(3핀: **SIG / VCC / GND**)
+- IR 센서 모듈 (핀 3개: **SIG / VCC / GND**)
 - 점퍼선
-- (권장) 흰 종이 + 검정 테이프(라인)
-- (선택) LED 1개 + 220Ω 저항(감지 결과를 눈으로 보기)
+- 브레드보드
+
+(선택)
+- Arduino Nano (아날로그 값 비교 테스트용)
 
 ---
 
-## 2) 배선(핀맵)
+## 2) 핀맵 / 배선
 
-### 2-1) 빠른 배선
-- IR **VCC** → ESP32 **3V3(3.3V)**
-- IR **GND** → ESP32 **GND**
-- IR **SIG** → ESP32 **GPIO26**
+### (A) ESP32 배선 (권장)
+| IR 센서 핀 | ESP32 | 설명 |
+|---|---|---|
+| **VCC** | **3V3** | 전원 (+) |
+| **GND** | **GND** | 접지 (-) |
+| **SIG** | **GPIO26** | 센서 출력(아날로그처럼 변할 수 있음) |
 
-> 권장 전원: **3V3**부터 먼저 사용하세요.
-> - 만약 센서가 5V 전용이라면(제품 설명이 5V only), **SIG 출력이 3.3V를 넘지 않는지** 반드시 확인해야 합니다.
+> **중요(공통 접지):** VCC/GND를 정확히 연결해야 값이 안정적으로 나옵니다.
 
-### 2-2) 회로 연결표 (IR 센서 ↔ ESP32)
-
-| 연결 목적 | 출발(부품/핀) | 도착(부품/핀) | 설명(한 줄) |
-|---|---|---|---|
-| 센서 전원(+) | IR 센서 VCC | ESP32 3V3 | 센서 구동 전원 |
-| 센서 전원(-) | IR 센서 GND | ESP32 GND | 기준점(공통 접지) |
-| 센서 출력 | IR 센서 SIG | ESP32 GPIO26 | 반사량에 따라 값이 변함 |
-
----
-
-## 3) 센서가 하는 일(아주 짧게)
-- 센서 앞쪽에서 **적외선(IR)을 쏘고**, 바닥에서 **반사되어 돌아오는 양**을 측정합니다.
-- 보통
-  - **흰색**: 반사가 많음
-  - **검정색**: 반사가 적음
-- 그래서 SIG 값이 **흰/검에 따라 달라지고**, 그 차이를 이용해 “라인 감지”를 합니다.
-
-> 주의: 모듈마다 SIG 값이 **흰색에서 커질 수도/작아질 수도** 있습니다.
-> 그래서 먼저 **실습1(원시값 확인)** 으로 방향을 확인합니다.
+### (B) Arduino Nano로 테스트할 때(참고)
+| IR 센서 핀 | Arduino Nano | 설명 |
+|---|---|---|
+| **VCC** | **5V** | 전원 (+) |
+| **GND** | **GND** | 접지 (-) |
+| **SIG** | **A0** | `analogRead()`로 값 확인 |
 
 ---
 
-## 4) 실습 파일 목록(권장)
-- **실습 1:** `lab1_ir_raw_read.py` (원시값 확인)
-- **실습 2:** `lab2_ir_threshold.py` (임계값으로 라인 판별)
-- **실습 2-1:** `lab2_1_ir_calibration.py` (자동 캘리브레이션으로 임계값 잡기)
-- **실습 3:** `lab3_ir_line_event.py` (라인 감지 이벤트 + LED 표시)
+## 3) 이 센서가 “라인(흰/검)”이 아니라 “근접”처럼 보이는 이유
+
+### ✅ 너가 관측한 패턴
+- 물체가 가까우면: **값이 크게 올라가고 (예: ESP32에서 3000~3600 근처)**
+- 멀어지면: **0 근처로 떨어짐**
+- 검은선을 밟아도: 상황에 따라 **높은 값이 유지될 수 있음**
+
+### ✅ 해석
+이건 보통 아래 중 하나(또는 복합)입니다.
+1. 센서가 바닥의 “흰/검 차이”보다 **거리(반사량 크기)**에 더 민감
+2. 센서가 보는 방향/각도가 바닥이 아니라 **앞/옆 물체 반사**에 더 민감
+3. 출력(SIG)이 연속값처럼 보이더라도 내부 회로 특성상 **0 또는 큰 값 위주로 뭉칠 수 있음**
+
+> 그래서 이 README는 **“근접 감지(있다/없다)” 실습** 중심으로 구성합니다.
 
 ---
 
-# 실습 1) 원시값 확인(흰/검에서 값이 어떻게 바뀌나?)
+## 4) 코드 파일 목록 (추천)
+- **실습 1:** `lab1_ir_read_value_esp32.py` (ESP32에서 값 읽기)
+- **실습 2:** `lab2_ir_threshold_onoff_esp32.py` (임계값으로 ON/OFF)
+- **실습 3:** `lab3_ir_filter_hysteresis_esp32.py` (필터링/히스테리시스)
+
+(참고)
+- **Arduino 테스트:** `arduino_ir_read_a0.ino`
+
+---
+
+# 실습 1) IR 값 읽기 (ESP32)
 
 ## 1) 코드 전체 흐름(큰 그림)
-- GPIO26을 **ADC(아날로그)** 로 읽어서 0~4095 값을 출력
-- 값이 흰/검에서 어떻게 변하는지 확인
+- ADC(아날로그 입력) 준비
+- `read_u16()` 또는 `read()`로 값 읽기
+- 시리얼(Thonny)에서 값 변화 관찰
 
-## 2) 코드
+## 2) 주요 코드
+> 파일: `lab1_ir_read_value_esp32.py`
+
 ```python
+# [실습1] IR 센서 값 읽기 (ESP32 / MicroPython)
+# 배선: SIG->GPIO26, VCC->3V3, GND->GND
+
 from machine import Pin, ADC
 import time
 
-SIG_PIN = 26
+IR_PIN = 26
+adc = ADC(Pin(IR_PIN))
 
-adc = ADC(Pin(SIG_PIN))
-adc.width(ADC.WIDTH_12BIT)      # 0~4095
-adc.atten(ADC.ATTN_11DB)        # 0~3.3V 범위
+# ESP32는 보통 ADC 범위 설정을 해주면 더 안정적입니다.
+# (MicroPython 버전에 따라 지원 여부가 다를 수 있음)
+try:
+    adc.atten(ADC.ATTN_11DB)   # 측정 범위 넓힘(대략 0~3.3V)
+    adc.width(ADC.WIDTH_12BIT) # 0~4095
+except:
+    pass
 
-print("[실습1] IR 원시값(ADC) 확인")
-print("흰 종이 / 검정 테이프 위에 센서를 번갈아 대보세요")
+print("[실습1] IR 값 읽기 시작")
 
 while True:
-    v = adc.read()
-    print("ADC:", v)
-    time.sleep(0.2)
+    try:
+        # 12bit일 때: 0~4095
+        val = adc.read()
+    except:
+        # read_u16() 지원이면: 0~65535
+        val = adc.read_u16()
+
+    print("IR =", val)
+    time.sleep(0.1)
 ```
 
-## 3) 주요 코드 분석(짧게)
-- `ADC(Pin(26))` : GPIO26의 전압을 숫자로 읽음
-- `read()` : 0~4095 값(전압에 비례)
-- 흰/검에서 값이 달라지면 정상
-
-## 4) 체크 포인트
-- 값이 **거의 안 변하면**: 센서를 바닥에서 3~10mm 정도로 높이 조절
-- 값이 **항상 0 또는 항상 4095**에 가깝다면: 배선(VCC/GND/SIG) 다시 확인
+### 체크 포인트
+- 값이 계속 **0**이면: VCC/GND 배선, SIG 배선, 핀 번호(GPIO26)부터 확인
+- 값이 계속 **최대치에 가깝게 고정**이면: 센서가 너무 가까운 물체를 보고 있거나, SIG가 3.3V에 가까운 HIGH로 붙어있을 수 있음
 
 ---
 
-# 실습 2) 임계값(threshold)으로 라인 판별
+# 실습 2) 임계값으로 감지/미감지 만들기 (ESP32)
 
 ## 1) 코드 전체 흐름(큰 그림)
-- 실습1에서 본 원시값을 바탕으로 `TH`(임계값)을 정함
-- `라인인지(True/False)` 를 출력
+- 실습1에서 값의 범위를 관찰
+- 임계값(threshold)을 정함
+- threshold 이상이면 “감지됨”, 미만이면 “미감지” 출력
 
-## 2) 코드
+## 2) 주요 코드
+> 파일: `lab2_ir_threshold_onoff_esp32.py`
+
 ```python
+# [실습2] IR 센서 임계값 감지 (ESP32 / MicroPython)
+# 배선: SIG->GPIO26
+
 from machine import Pin, ADC
 import time
 
-SIG_PIN = 26
+IR_PIN = 26
+THRESHOLD = 2000  # <-- 실습1에서 본 값에 맞춰 조절
 
-adc = ADC(Pin(SIG_PIN))
-adc.width(ADC.WIDTH_12BIT)
-adc.atten(ADC.ATTN_11DB)
+adc = ADC(Pin(IR_PIN))
+try:
+    adc.atten(ADC.ATTN_11DB)
+    adc.width(ADC.WIDTH_12BIT)
+except:
+    pass
 
-TH = 2000          # <- 실습1 값 보고 조절!
-BLACK_IS_SMALL = True  # 검정일 때 값이 더 작으면 True, 더 크면 False
-
-print("[실습2] 임계값으로 라인 판별")
+print("[실습2] threshold =", THRESHOLD)
 
 while True:
-    v = adc.read()
+    val = adc.read()
 
-    if BLACK_IS_SMALL:
-        on_line = (v < TH)
+    if val >= THRESHOLD:
+        print("DETECTED  | IR=", val)
     else:
-        on_line = (v > TH)
+        print("NO OBJECT | IR=", val)
 
-    print("ADC:", v, "| LINE:", on_line)
-    time.sleep(0.2)
+    time.sleep(0.1)
 ```
 
-## 3) 주요 코드 분석(짧게)
-- `TH` : 흰/검을 나누는 기준선
-- `BLACK_IS_SMALL` : 모듈마다 값 방향이 달라서 옵션으로 둠
-
-## 4) 체크 포인트
-- `LINE`이 항상 True/False로 고정이면
-  - `TH`를 더 올리거나/내리거나
-  - `BLACK_IS_SMALL`을 반대로 바꿔보세요.
+### 체크 포인트
+- `THRESHOLD`는 **정답이 하나가 아니라** 환경(조명/거리/각도/바닥)에 따라 바뀝니다.
+- 수업에서는 보통:
+  - 손을 가까이/멀리 하면서 값을 보고
+  - 그 중간값을 임계값으로 잡게 하면 이해가 빠릅니다.
 
 ---
 
-# 실습 2-1) 자동 캘리브레이션(임계값을 자동으로 잡기)
+# 실습 3) 오작동 줄이기 (필터링 + 히스테리시스)
+
+> 센서 값이 경계(threshold 근처)에서 흔들리면 출력이 **ON/OFF가 빠르게 깜빡**입니다.
+> 이걸 줄이려고 **(1) 평균 필터** + **(2) 히스테리시스(ON/OFF 임계값을 다르게)** 를 사용합니다.
 
 ## 1) 코드 전체 흐름(큰 그림)
-- 3초 동안 **흰색**에서 측정해서 평균
-- 3초 동안 **검정색**에서 측정해서 평균
-- 두 평균의 중간을 `TH`로 자동 설정
+- 최근 N개 값을 평균내서 흔들림 줄이기
+- ON 임계값 / OFF 임계값을 다르게 잡아서 깜빡임 줄이기
 
-## 2) 코드
+## 2) 주요 코드
+> 파일: `lab3_ir_filter_hysteresis_esp32.py`
+
 ```python
+# [실습3] 평균 필터 + 히스테리시스 (ESP32 / MicroPython)
+
 from machine import Pin, ADC
 import time
 
-SIG_PIN = 26
-SAMPLE_N = 30
+IR_PIN = 26
 
-adc = ADC(Pin(SIG_PIN))
-adc.width(ADC.WIDTH_12BIT)
-adc.atten(ADC.ATTN_11DB)
+# 히스테리시스: ON은 높게, OFF는 낮게
+TH_ON  = 2200
+TH_OFF = 1800
 
-def avg_samples(n=30, dt=0.1):
-    s = 0
-    for _ in range(n):
-        s += adc.read()
-        time.sleep(dt)
-    return s // n
+N = 10  # 평균낼 샘플 수(클수록 부드러움, 반응은 느려짐)
 
-print("[실습2-1] 자동 캘리브레이션")
-print("1) 지금부터 3초 후 흰 종이 위에 올려두세요")
-time.sleep(3)
-white = avg_samples(SAMPLE_N)
-print("WHITE_AVG =", white)
+adc = ADC(Pin(IR_PIN))
+try:
+    adc.atten(ADC.ATTN_11DB)
+    adc.width(ADC.WIDTH_12BIT)
+except:
+    pass
 
-print("2) 지금부터 3초 후 검정 테이프 위에 올려두세요")
-time.sleep(3)
-black = avg_samples(SAMPLE_N)
-print("BLACK_AVG =", black)
+buf = [0] * N
+idx = 0
+state = False  # False=미감지, True=감지
 
-TH = (white + black) // 2
-BLACK_IS_SMALL = (black < white)
-
-print("\n[결과]")
-print("TH =", TH)
-print("BLACK_IS_SMALL =", BLACK_IS_SMALL)
-print("이제 LINE 판별을 시작합니다. (Ctrl+C로 종료)")
+print("[실습3] TH_ON=", TH_ON, "TH_OFF=", TH_OFF, "N=", N)
 
 while True:
     v = adc.read()
-    on_line = (v < TH) if BLACK_IS_SMALL else (v > TH)
-    print("ADC:", v, "| LINE:", on_line)
-    time.sleep(0.2)
-```
 
-## 3) 주요 코드 분석(짧게)
-- `white`, `black` 평균을 직접 뽑아서 **TH를 자동 계산**
-- `BLACK_IS_SMALL`도 자동으로 결정(검정이 더 작은 값이면 True)
+    buf[idx] = v
+    idx = (idx + 1) % N
+    avg = sum(buf) // N
 
----
+    # 상태 전이
+    if (not state) and (avg >= TH_ON):
+        state = True
+        print("--> DETECTED (avg=", avg, ")")
 
-# 실습 3) 라인 감지 이벤트 + LED 표시(선택)
+    elif state and (avg <= TH_OFF):
+        state = False
+        print("--> NO OBJECT (avg=", avg, ")")
 
-## 1) 코드 전체 흐름(큰 그림)
-- 실습2/2-1의 `TH`와 `BLACK_IS_SMALL`을 사용
-- 라인을 감지하면 LED를 켜고, 아니면 끔
-
-> ESP32 보드마다 내장 LED 핀이 다를 수 있습니다.
-> 내장 LED가 안 켜지면 `LED_PIN`을 바꾸거나, 이 실습은 `print()`만 사용해도 됩니다.
-
-## 2) 코드
-```python
-from machine import Pin, ADC
-import time
-
-SIG_PIN = 26
-LED_PIN = 2   # 보드에 따라 다를 수 있음
-
-adc = ADC(Pin(SIG_PIN))
-adc.width(ADC.WIDTH_12BIT)
-adc.atten(ADC.ATTN_11DB)
-
-led = Pin(LED_PIN, Pin.OUT)
-
-TH = 2000
-BLACK_IS_SMALL = True
-
-print("[실습3] 라인 감지 이벤트")
-
-prev = None
-while True:
-    v = adc.read()
-    on_line = (v < TH) if BLACK_IS_SMALL else (v > TH)
-
-    # 상태 변화 감지(라인에 들어갔을 때만 메시지)
-    if prev is None:
-        prev = on_line
-    elif on_line != prev:
-        print("STATE CHANGED -> LINE:", on_line)
-        prev = on_line
-
-    led.value(1 if on_line else 0)
+    # 상태 출력
+    print("state=", "ON" if state else "OFF", " raw=", v, " avg=", avg)
     time.sleep(0.05)
 ```
 
 ---
 
-## 5) 자주 막히는 포인트(트러블슈팅)
-- **값이 전혀 변하지 않음**
-  - VCC/GND/SIG 배선부터 확인
-  - 센서 높이(바닥과 거리) 조절
-- **값은 변하는데 라인 판별이 이상함**
-  - 실습1에서 흰/검 값이 어떤 방향인지 확인
-  - `BLACK_IS_SMALL` 옵션을 반대로 바꿔보기
-  - `TH`를 흰/검 평균 사이로 조정
-- **GPIO26을 써도 되나요?**
-  - 네, 입력으로 사용 가능합니다.
-  - 단, GPIO26은 ESP32에서 **ADC2** 계열이라 **Wi‑Fi를 켜면 ADC 읽기가 안 될 수 있음**(이 실습은 Wi‑Fi 사용 안 하므로 보통 문제 없음).
+## 5) Arduino Nano 테스트 코드 (A0 읽기)
+> 센서가 아날로그처럼 변하는지 확인할 때 유용합니다.
+
+```cpp
+// arduino_ir_read_a0.ino
+// IR 센서 아날로그 값 측정 (Arduino Nano)
+// 배선: SIG->A0, VCC->5V, GND->GND
+
+const int IR_PIN = A0;
+
+void setup() {
+  Serial.begin(9600);
+}
+
+void loop() {
+  int raw = analogRead(IR_PIN);          // 0~1023
+  float volt = raw * (5.0 / 1023.0);     // Nano 5V 기준
+
+  Serial.print("RAW=");
+  Serial.print(raw);
+  Serial.print("  V=");
+  Serial.println(volt, 3);
+
+  delay(100);
+}
+```
 
 ---
 
-## 6) 다음 확장(선택)
-- IR 센서 2개(좌/우)로 확장해서 라인트레이서처럼 사용
-- 모터 드라이버(L9110S)와 연결해서
-  - `LINE=True`이면 정지
-  - `LINE=False`이면 전진
-  같은 간단한 제어부터 시작
+## 6) 자주 막히는 곳(트러블슈팅)
+
+### (1) 검은선인데도 값이 높게 나와요
+- 센서 높이를 조금 올리거나(바닥에서 멀리)
+- 센서 각도를 바닥에 수직으로 맞추고
+- 주변(옆/앞)에 반사되는 물체(손/벽/테이블 가장자리)가 없는지 확인하세요.
+
+### (2) 값이 0 또는 최대치로만 나와요
+- SIG가 **디지털 판정 출력**에 가까운 경우일 수 있습니다.
+- 그럴 땐 실습2/3처럼 **threshold 기반 ON/OFF**로 쓰는 게 정석입니다.
+
+### (3) ESP32에서 값 범위가 0~3600 정도로 보여요
+- ESP32의 ADC는 12-bit일 때 보통 0~4095 범위입니다.
+- 3600대는 “상당히 높은 입력(강한 반사/가까움)”이라는 뜻으로 이해하면 됩니다.
+
+---
+
+## 7) 다음 확장 아이디어(수업용)
+- 감지되면 LED 켜기
+- 감지되면 모터 정지(L9110S 실습과 연결)
+- 두 개 센서를 좌/우에 붙여서 간단한 장애물 회피/라인트레이서 형태로 확장
+
+---
+
+## 라이선스(선택)
+수업 자료로 자유롭게 사용하려면 아래처럼 넣어도 됩니다.
+- MIT License 또는 CC BY
+
