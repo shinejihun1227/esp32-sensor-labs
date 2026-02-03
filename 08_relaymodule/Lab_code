@@ -1,5 +1,5 @@
-const int PIR_PIN = 27;
-const int RELAY_PIN = 26;
+const int PIR_PIN = 26;
+const int RELAY_PIN = 27;
 
 // 릴레이가 LOW 트리거인 경우
 const int RELAY_ON = LOW;
