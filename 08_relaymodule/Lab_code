@@ -1,0 +1,30 @@
+const int PIR_PIN = 27;
+const int RELAY_PIN = 26;
+
+// 릴레이가 LOW 트리거인 경우
+const int RELAY_ON = LOW;
+const int RELAY_OFF = HIGH;
+
+unsigned long holdTime = 5000;  // LED 유지 시간(ms)
+unsigned long lastDetect = 0;
+
+void setup() {
+  pinMode(PIR_PIN, INPUT);
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, RELAY_OFF);
+  Serial.begin(115200);
+}
+
+void loop() {
+  if (digitalRead(PIR_PIN) == HIGH) {
+    lastDetect = millis();
+    digitalWrite(RELAY_PIN, RELAY_ON);
+    Serial.println("Motion detected → LED ON");
+  }
+
+  if (millis() - lastDetect > holdTime) {
+    digitalWrite(RELAY_PIN, RELAY_OFF);
+  }
+
+  delay(50);
+}
