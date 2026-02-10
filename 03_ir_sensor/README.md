@@ -70,7 +70,7 @@ IR 센서의 출력(SIG)을 **ESP32 GPIO26**에서 읽어서,
 - 시리얼(Thonny)에서 값 변화 관찰
 
 ## 2) 주요 코드
-> 파일: `lab1_ir_read_value_esp32.py`
+> 파일: `lab_ir_read_value_esp32.py`
 
     from machine import Pin
     import time
