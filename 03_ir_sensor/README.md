@@ -85,8 +85,8 @@ IR 센서의 출력(SIG)을 **ESP32 GPIO26**에서 읽어서,
         raw = ir.value()      # 원래 센서 출력 (검은색=1, 흰색=0)
         print("IR =", raw)    
         # 값을 반대로 출력하고 싶다면 , val = 1- raw , print("IR =", val) 으로 추가/변경 해주세요!
+        time.sleep(0.1)
     
-    time.sleep(0.1)
 
 ### 체크 포인트
 - 값이 계속 **0**이면: VCC/GND 배선, SIG 배선, 핀 번호(GPIO26)부터 확인
